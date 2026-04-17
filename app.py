@@ -89,25 +89,29 @@ def analyze(symbol):
         if df.empty or len(df) < 50:
             return None
 
+        # Flatten MultiIndex columns produced by newer yfinance versions
+        if isinstance(df.columns, pd.MultiIndex):
+            df.columns = df.columns.get_level_values(0)
+
         rsi, mfi, cci, stoch, zscore = compute_indicators(df)
 
         last = -1
 
         # CONDITIONS
-        rsi_ob = rsi.iloc[last] >= 70
-        rsi_os = rsi.iloc[last] <= 30
+        rsi_ob = float(rsi.iloc[last]) >= 70
+        rsi_os = float(rsi.iloc[last]) <= 30
 
-        mfi_ob = mfi.iloc[last] >= 80
-        mfi_os = mfi.iloc[last] <= 20
+        mfi_ob = float(mfi.iloc[last]) >= 80
+        mfi_os = float(mfi.iloc[last]) <= 20
 
-        cci_ob = cci.iloc[last] >= 100
-        cci_os = cci.iloc[last] <= -100
+        cci_ob = float(cci.iloc[last]) >= 100
+        cci_os = float(cci.iloc[last]) <= -100
 
-        stoch_ob = stoch.iloc[last] >= 80
-        stoch_os = stoch.iloc[last] <= 20
+        stoch_ob = float(stoch.iloc[last]) >= 80
+        stoch_os = float(stoch.iloc[last]) <= 20
 
-        z_ob = zscore.iloc[last] >= 2
-        z_os = zscore.iloc[last] <= -2
+        z_ob = float(zscore.iloc[last]) >= 2
+        z_os = float(zscore.iloc[last]) <= -2
 
         count_ob = sum([rsi_ob, mfi_ob, cci_ob, stoch_ob, z_ob])
         count_os = sum([rsi_os, mfi_os, cci_os, stoch_os, z_os])
@@ -116,7 +120,7 @@ def analyze(symbol):
 
         return {
             "Ticker": symbol,
-            "Score": round(score, 1),
+            "Score": round(float(score), 1),
             "OB Count": count_ob,
             "OS Count": count_os,
             "Overbought": score >= threshold,
