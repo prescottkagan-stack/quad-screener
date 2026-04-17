@@ -9,7 +9,7 @@ st.title("Multi-Oscillator Confluence Screener")
 # =========================
 # SETTINGS
 # =========================
-mode = st.radio("Scan Mode", ["Custom List", "S&P 500"])
+mode = st.radio("Scan Mode", ["Custom List", "S&P 500", "Russell 2000"])
 
 tickers_input = st.text_area(
     "Tickers",
@@ -31,8 +31,28 @@ def load_sp500():
     except:
         return ["AAPL","MSFT","NVDA","AMZN","GOOGL","META","TSLA"]
 
+@st.cache_data
+def load_russell2000():
+    try:
+        # iShares IWM holdings are a reliable proxy for Russell 2000 constituents
+        url = (
+            "https://www.ishares.com/us/products/239710/ishares-russell-2000-etf"
+            "/1467271812596.ajax?fileType=csv&fileName=IWM_holdings&dataType=fund"
+        )
+        df = pd.read_csv(url, skiprows=9)
+        df.columns = df.columns.str.strip()
+        tickers = df["Ticker"].dropna().astype(str).str.strip()
+        # Drop non-equity rows (cash, futures placeholders, etc.)
+        tickers = tickers[tickers.str.match(r"^[A-Z]{1,5}$")]
+        return tickers.tolist()
+    except:
+        st.warning("Could not fetch Russell 2000 holdings — falling back to a small sample.")
+        return ["SMCI","CROX","BOOT","LUMN","PRCT","ACVA","AMSF","ESTE","HIMS","SKYW"]
+
 if mode == "S&P 500":
     symbols = load_sp500()
+elif mode == "Russell 2000":
+    symbols = load_russell2000()
 else:
     symbols = [s.strip().upper() for s in tickers_input.split(",")]
 
