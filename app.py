@@ -12,7 +12,7 @@ st.title("Quad Rotation Screener — Institutional")
 mode = st.radio("Scan Mode", ["Custom List", "S&P 500"])
 
 tickers_input = st.text_area(
-    "Tickers",
+    "Tickers (for Custom List)",
     "AAPL,MSFT,TSLA,NVDA,AMZN,META,GOOGL"
 )
 
@@ -24,24 +24,29 @@ armed_window = st.slider("Armed Window", 1, 30, 12)
 slope_threshold = st.slider("Slope Threshold", 0.0, 2.0, 0.75)
 
 # =========================
-# LOAD S&P 500
+# LOAD SYMBOLS (STABLE)
 # =========================
 @st.cache_data
 def load_sp500():
     try:
-        table = pd.read_html(
-            "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies",
-            flavor="html5lib"
+        df = pd.read_csv(
+            "https://datahub.io/core/s-and-p-500-companies/r/constituents.csv"
         )
-        return table[0]['Symbol'].tolist()
+        return df["Symbol"].tolist()
     except:
-        # Fallback list (always works)
+        # Fallback (never breaks)
         return [
             "AAPL","MSFT","NVDA","AMZN","GOOGL","META","TSLA",
             "BRK-B","UNH","XOM","JNJ","JPM","V","PG","AVGO",
             "HD","MA","CVX","LLY","ABBV","PEP","KO","COST",
             "MRK","WMT","BAC","ADBE","CRM","NFLX","AMD"
         ]
+
+# ✅ DEFINE SYMBOLS (THIS FIXES YOUR ERROR)
+if mode == "S&P 500":
+    symbols = load_sp500()
+else:
+    symbols = [s.strip().upper() for s in tickers_input.split(",")]
 
 # =========================
 # FUNCTIONS
@@ -73,7 +78,8 @@ def bars_since(cond):
 def analyze(symbol):
     try:
         df = yf.download(symbol, period="6mo", interval="1d", progress=False)
-        if df.empty:
+
+        if df.empty or len(df) < 100:
             return None
 
         k1 = stochastic(df, 9)
@@ -88,85 +94,49 @@ def analyze(symbol):
 
         last = -1
 
-        # =========================
         # EXTREMES
-        # =========================
-        all_os = (
-            k1.iloc[last] <= os_level and
-            k2.iloc[last] <= os_level and
-            k3.iloc[last] <= os_level and
-            k4.iloc[last] <= os_level
-        )
-
-        all_ob = (
-            k1.iloc[last] >= ob_level and
-            k2.iloc[last] >= ob_level and
-            k3.iloc[last] >= ob_level and
-            k4.iloc[last] >= ob_level
-        )
-
-        # =========================
-        # ARMED STATE
-        # =========================
         os_series = (k1 <= os_level) & (k2 <= os_level) & (k3 <= os_level) & (k4 <= os_level)
         ob_series = (k1 >= ob_level) & (k2 >= ob_level) & (k3 >= ob_level) & (k4 >= ob_level)
 
+        # ARMED
         bull_armed = bars_since(os_series.values) <= armed_window
         bear_armed = bars_since(ob_series.values) <= armed_window
 
-        # =========================
-        # ROTATION CROSS WINDOW
-        # =========================
-        cross1 = crossover(k1, d1)
-        cross2 = crossover(k2, d2)
-        cross3 = crossover(k3, d3)
-        cross4 = crossover(k4, d4)
-
-        recent_bull = (
-            bars_since(cross1.values) <= rotation_window and
-            bars_since(cross2.values) <= rotation_window and
-            bars_since(cross3.values) <= rotation_window and
-            bars_since(cross4.values) <= rotation_window
+        # ROTATION CROSS
+        bull_cross = (
+            bars_since(crossover(k1, d1).values) <= rotation_window and
+            bars_since(crossover(k2, d2).values) <= rotation_window and
+            bars_since(crossover(k3, d3).values) <= rotation_window and
+            bars_since(crossover(k4, d4).values) <= rotation_window
         )
 
-        cross1_b = crossunder(k1, d1)
-        cross2_b = crossunder(k2, d2)
-        cross3_b = crossunder(k3, d3)
-        cross4_b = crossunder(k4, d4)
-
-        recent_bear = (
-            bars_since(cross1_b.values) <= rotation_window and
-            bars_since(cross2_b.values) <= rotation_window and
-            bars_since(cross3_b.values) <= rotation_window and
-            bars_since(cross4_b.values) <= rotation_window
+        bear_cross = (
+            bars_since(crossunder(k1, d1).values) <= rotation_window and
+            bars_since(crossunder(k2, d2).values) <= rotation_window and
+            bars_since(crossunder(k3, d3).values) <= rotation_window and
+            bars_since(crossunder(k4, d4).values) <= rotation_window
         )
 
-        # =========================
         # SLOPE
-        # =========================
-        slope_ok_bull = all([
+        bull_slope = all([
             slope(k1).iloc[last] >= slope_threshold,
             slope(k2).iloc[last] >= slope_threshold,
             slope(k3).iloc[last] >= slope_threshold,
             slope(k4).iloc[last] >= slope_threshold
         ])
 
-        slope_ok_bear = all([
+        bear_slope = all([
             slope(k1).iloc[last] <= -slope_threshold,
             slope(k2).iloc[last] <= -slope_threshold,
             slope(k3).iloc[last] <= -slope_threshold,
             slope(k4).iloc[last] <= -slope_threshold
         ])
 
-        # =========================
-        # FINAL SIGNALS
-        # =========================
-        bull_signal = bull_armed and recent_bull and slope_ok_bull
-        bear_signal = bear_armed and recent_bear and slope_ok_bear
+        # FINAL SIGNAL
+        bull_signal = bull_armed and bull_cross and bull_slope
+        bear_signal = bear_armed and bear_cross and bear_slope
 
-        # =========================
-        # STRENGTH
-        # =========================
+        # STRENGTH SCORE
         strength = (
             abs(k1.iloc[last]-50) +
             abs(k2.iloc[last]-50) +
@@ -191,7 +161,7 @@ def analyze(symbol):
         return None
 
 # =========================
-# RUN
+# RUN SCREENER
 # =========================
 if st.button("Run Screener"):
 
@@ -202,12 +172,13 @@ if st.button("Run Screener"):
         data = analyze(sym)
         if data:
             results.append(data)
-        progress.progress((i+1)/len(symbols))
+
+        progress.progress((i + 1) / len(symbols))
 
     df = pd.DataFrame(results)
 
     if df.empty:
-        st.warning("No data")
+        st.warning("No results found")
     else:
         df = df.sort_values("Strength", ascending=False)
 
