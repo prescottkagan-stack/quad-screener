@@ -28,10 +28,20 @@ slope_threshold = st.slider("Slope Threshold", 0.0, 2.0, 0.75)
 # =========================
 @st.cache_data
 def load_sp500():
-    table = pd.read_html("https://en.wikipedia.org/wiki/List_of_S%26P_500_companies")
-    return table[0]['Symbol'].tolist()
-
-symbols = load_sp500() if mode == "S&P 500" else [s.strip().upper() for s in tickers_input.split(",")]
+    try:
+        table = pd.read_html(
+            "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies",
+            flavor="html5lib"
+        )
+        return table[0]['Symbol'].tolist()
+    except:
+        # Fallback list (always works)
+        return [
+            "AAPL","MSFT","NVDA","AMZN","GOOGL","META","TSLA",
+            "BRK-B","UNH","XOM","JNJ","JPM","V","PG","AVGO",
+            "HD","MA","CVX","LLY","ABBV","PEP","KO","COST",
+            "MRK","WMT","BAC","ADBE","CRM","NFLX","AMD"
+        ]
 
 # =========================
 # FUNCTIONS
